@@ -26,8 +26,8 @@ class PruebaView(View):
         self.numero = numero
 
     @discord.ui.button(label="Unirse a la cola",
-                       style=discord.ButtonStyle.green,
-                       custom_id="unirse_cola")
+                      style=discord.ButtonStyle.green,
+                      custom_id="unirse_cola")
     async def unirse_cola(self, interaction: discord.Interaction, button: Button):
         if interaction.user not in participantes[self.numero]:
             participantes[self.numero].append(interaction.user)
@@ -54,8 +54,8 @@ async def actualizar_mensaje_prueba(numero):
         embed.description = f"Prueba abierta ✳️\n{entrenadores_online[numero].mention} está online"
         if participantes[numero]:
             embed.add_field(name="Participantes",
-                           value="\n".join([user.mention for user in participantes[numero]]),
-                           inline=False)
+                          value="\n".join([user.mention for user in participantes[numero]]),
+                          inline=False)
     else:
         embed.color = discord.Color.red()
         embed.description = "Prueba cerrada 🔴\nNo hay entrenadores online"
@@ -68,10 +68,6 @@ async def actualizar_mensaje_prueba(numero):
             mensajes_prueba[numero] = await channel.send(embed=embed, view=view)
     except (NotFound, AttributeError):
         mensajes_prueba[numero] = await channel.send(embed=embed, view=view)
-
-
-def get_numero_comando(ctx):
-    return int(ctx.invoked_with[-1])
 
 
 @bot.command()
@@ -263,10 +259,11 @@ async def finalizar9(ctx): await finalizar(ctx, 9)
 async def finalizar10(ctx): await finalizar(ctx, 10)
 
 async def finalizar(ctx, numero):
-    pruebas_en_curso[numero] = False
+    entrenadores_online[numero] = None  # Cambio clave: establecer entrenador como offline
     participantes[numero] = []
-    await actualizar_mensaje_prueba(numero)
-    await ctx.send(f"🔴 Prueba #{numero} finalizada. Se reinició la cola.", delete_after=5)
+    pruebas_en_curso[numero] = False
+    await actualizar_mensaje_prueba(numero)  # Esto hará que el embed vuelva al estado inicial
+    await ctx.send(f"🔴 Prueba #{numero} finalizada. Sistema reiniciado completamente.", delete_after=5)
 
 
 @bot.command()
