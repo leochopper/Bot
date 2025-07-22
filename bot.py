@@ -9,7 +9,7 @@ from discord.errors import NotFound
 intents = discord.Intents.all()
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-# Diccionario para almacenar múltiples pruebas
+# Diccionario para múltiples pruebas
 pruebas = {}
 
 class Prueba:
@@ -19,6 +19,7 @@ class Prueba:
         self.prueba_en_curso = False
         self.mensaje_prueba = None
         self.canal_prueba_id = None
+        self.ultima_sesion = None
 
 class PruebaView(View):
     def __init__(self, prueba_id):
@@ -49,21 +50,22 @@ async def actualizar_mensaje_prueba(prueba_id):
     if not canal:
         return
 
-    timestamp = int(datetime.now().timestamp())
-    embed = discord.Embed(title=f"Sistema de Pruebas de Ascenso (Grupo {prueba_id})")
+    # Formatear timestamp para Discord
+    timestamp = prueba.ultima_sesion if prueba.ultima_sesion else int(datetime.now().timestamp())
+    embed = discord.Embed(title=f"⚔️ Sistema de Pruebas (Grupo {prueba_id})")
     view = PruebaView(prueba_id) if (prueba.entrenador_online and not prueba.prueba_en_curso) else None
 
     if prueba.entrenador_online:
         embed.color = discord.Color.green()
-        embed.description = f"Prueba abierta ✳️\n{prueba.entrenador_online.mention} está online"
+        embed.description = f"**Prueba abierta** ✳️\n{prueba.entrenador_online.mention} está disponible"
         if prueba.participantes:
-            embed.add_field(name="Participantes",
+            embed.add_field(name="👥 Participantes",
                           value="\n".join([user.mention for user in prueba.participantes]),
                           inline=False)
     else:
         embed.color = discord.Color.red()
-        embed.description = "Prueba cerrada 🔴\nNo hay entrenadores online"
-        embed.set_footer(text=f"Última sesión: <t:{timestamp}:f>")
+        embed.description = "**Prueba cerrada** 🔴\nEsperando entrenadores..."
+        embed.set_footer(text=f"Última actividad: <t:{timestamp}:f>")
 
     try:
         if prueba.mensaje_prueba:
@@ -71,7 +73,13 @@ async def actualizar_mensaje_prueba(prueba_id):
         else:
             prueba.mensaje_prueba = await canal.send(embed=embed, view=view)
     except (NotFound, AttributeError):
+        # Si el mensaje fue eliminado, se recrea
         prueba.mensaje_prueba = await canal.send(embed=embed, view=view)
+
+@bot.event
+async def on_command_error(ctx, error):
+    if isinstance(error, commands.CommandNotFound):
+        await ctx.send("❌ Comando no reconocido. Usa `!help`", delete_after=5)
 
 @bot.command()
 @commands.has_role("Entrenador")
@@ -79,25 +87,27 @@ async def set_here1(ctx):
     if 1 not in pruebas:
         pruebas[1] = Prueba()
     pruebas[1].canal_prueba_id = ctx.channel.id
+    pruebas[1].ultima_sesion = int(datetime.now().timestamp())
     await actualizar_mensaje_prueba(1)
-    await ctx.send("✅ Canal de pruebas 1 configurado aquí.", delete_after=5)
+    await ctx.send("✅ **Canal configurado para pruebas Grupo 1**", delete_after=5)
 
 @bot.command()
 @commands.has_role("Entrenador")
 async def online1(ctx):
     prueba = pruebas.get(1)
     if not prueba:
-        await ctx.send("❌ Usa primero !set_here1 en este canal.", delete_after=5)
+        await ctx.send("⚠️ Usa primero `!set_here1` en este canal.", delete_after=5)
         return
     if prueba.entrenador_online:
-        await ctx.send("⚠️ Ya hay un entrenador online.", delete_after=5)
+        await ctx.send("⚠️ Ya hay un entrenador activo.", delete_after=5)
         return
     
     prueba.entrenador_online = ctx.author
+    prueba.ultima_sesion = int(datetime.now().timestamp())
     prueba.prueba_en_curso = False
     await actualizar_mensaje_prueba(1)
-    await ctx.send("🟢 Modo entrenador activado.", delete_after=5)
-    await asyncio.sleep(7200)  # 2 horas de timeout
+    await ctx.send("🟢 **Modo entrenador activado**", delete_after=5)
+    await asyncio.sleep(7200)  # Auto-offline después de 2 horas
     if pruebas.get(1) and pruebas[1].entrenador_online == ctx.author:
         await offline1(ctx)
 
@@ -107,11 +117,13 @@ async def offline1(ctx):
     prueba = pruebas.get(1)
     if not prueba:
         return
+    
     prueba.entrenador_online = None
     prueba.participantes = []
     prueba.prueba_en_curso = False
+    prueba.ultima_sesion = int(datetime.now().timestamp())
     await actualizar_mensaje_prueba(1)
-    await ctx.send("🔴 Modo entrenador desactivado.", delete_after=5)
+    await ctx.send("🔴 **Modo entrenador desactivado**", delete_after=5)
 
 @bot.command()
 @commands.has_role("Entrenador")
@@ -119,35 +131,33 @@ async def iniciar1(ctx):
     prueba = pruebas.get(1)
     if not prueba:
         return
+    
     prueba.prueba_en_curso = True
+    prueba.ultima_sesion = int(datetime.now().timestamp())
     await actualizar_mensaje_prueba(1)
-    await ctx.send("🟢 Prueba iniciada. Los participantes no pueden unirse ahora.", delete_after=5)
+    await ctx.send("⏳ **Prueba iniciada: No se admiten más participantes**", delete_after=5)
 
 @bot.command()
 @commands.has_role("Entrenador")
 async def finalizar1(ctx):
     prueba = pruebas.get(1)
     if not prueba:
-        await ctx.send("❌ No hay prueba activa en este grupo.", delete_after=5)
         return
     
     prueba.entrenador_online = None
     prueba.participantes = []
     prueba.prueba_en_curso = False
+    prueba.ultima_sesion = int(datetime.now().timestamp())
     await actualizar_mensaje_prueba(1)
-    await ctx.send("🔴 Prueba finalizada. Estado reiniciado.", delete_after=5)
+    await ctx.send("🏁 **Prueba finalizada y reiniciada**", delete_after=5)
 
 @bot.command()
 @commands.has_role("Entrenador")
-async def fix_msg1(ctx):
-    prueba = pruebas.get(1)
-    if not prueba:
-        return
-    prueba.mensaje_prueba = None
-    await actualizar_mensaje_prueba(1)
-    await ctx.send("✅ Mensaje recreado manualmente.", delete_after=5)
+async def reset1(ctx):
+    pruebas[1] = Prueba()  # Reinicia completamente el Grupo 1
+    await ctx.send("🔄 **Grupo 1 reiniciado. Usa `!set_here1` en un canal nuevo**", delete_after=5)
 
-# Sistema keep_alive para 24/7
+# Sistema 24/7
 from flask import Flask
 from threading import Thread
 
@@ -155,7 +165,7 @@ app = Flask('')
 
 @app.route('/')
 def home():
-    return "Bot en línea"
+    return "Bot Online"
 
 def run():
     app.run(host='0.0.0.0', port=8080)
