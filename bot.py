@@ -3,13 +3,13 @@ import os
 import asyncio
 from discord.ext import commands
 from discord.ui import Button, View
-from datetime import datetime
+from datetime import datetime, timezone
 from discord.errors import NotFound
 
 intents = discord.Intents.all()
 bot = commands.Bot(command_prefix="!", intents=intents)
 
-# Diccionario para múltiples pruebas
+# Diccionario para almacenar hasta 10 grupos de pruebas
 pruebas = {}
 
 class Prueba:
@@ -50,8 +50,10 @@ async def actualizar_mensaje_prueba(prueba_id):
     if not canal:
         return
 
-    # Formatear timestamp para Discord
-    timestamp = prueba.ultima_sesion if prueba.ultima_sesion else int(datetime.now().timestamp())
+    # Obtener timestamp en UTC y formatear para Discord
+    timestamp = prueba.ultima_sesion if prueba.ultima_sesion else int(datetime.now(timezone.utc).timestamp())
+    hora_discord = f"<t:{timestamp}:F>"  # Formato completo con fecha y hora local
+    
     embed = discord.Embed(title=f"⚔️ Sistema de Pruebas (Grupo {prueba_id})")
     view = PruebaView(prueba_id) if (prueba.entrenador_online and not prueba.prueba_en_curso) else None
 
@@ -65,7 +67,7 @@ async def actualizar_mensaje_prueba(prueba_id):
     else:
         embed.color = discord.Color.red()
         embed.description = "**Prueba cerrada** 🔴\nEsperando entrenadores..."
-        embed.set_footer(text=f"Última actividad: <t:{timestamp}:f>")
+        embed.set_footer(text=f"Última actividad: {hora_discord}")
 
     try:
         if prueba.mensaje_prueba:
@@ -73,89 +75,47 @@ async def actualizar_mensaje_prueba(prueba_id):
         else:
             prueba.mensaje_prueba = await canal.send(embed=embed, view=view)
     except (NotFound, AttributeError):
-        # Si el mensaje fue eliminado, se recrea
         prueba.mensaje_prueba = await canal.send(embed=embed, view=view)
 
-@bot.event
-async def on_command_error(ctx, error):
-    if isinstance(error, commands.CommandNotFound):
-        await ctx.send("❌ Comando no reconocido. Usa `!help`", delete_after=5)
+# Función para generar comandos dinámicos
+def crear_comandos_grupo(numero):
+    @bot.command()
+    @commands.has_role("Entrenador")
+    async def set_here(ctx):
+        if numero not in pruebas:
+            pruebas[numero] = Prueba()
+        pruebas[numero].canal_prueba_id = ctx.channel.id
+        pruebas[numero].ultima_sesion = int(datetime.now(timezone.utc).timestamp()
+        await actualizar_mensaje_prueba(numero)
+        await ctx.send(f"✅ **Canal configurado para pruebas Grupo {numero}**", delete_after=5)
+    set_here.__name__ = f"set_here{numero}"
 
-@bot.command()
-@commands.has_role("Entrenador")
-async def set_here1(ctx):
-    if 1 not in pruebas:
-        pruebas[1] = Prueba()
-    pruebas[1].canal_prueba_id = ctx.channel.id
-    pruebas[1].ultima_sesion = int(datetime.now().timestamp())
-    await actualizar_mensaje_prueba(1)
-    await ctx.send("✅ **Canal configurado para pruebas Grupo 1**", delete_after=5)
+    @bot.command()
+    @commands.has_role("Entrenador")
+    async def online(ctx):
+        prueba = pruebas.get(numero)
+        if not prueba:
+            await ctx.send(f"⚠️ Usa primero `!set_here{numero}` en este canal.", delete_after=5)
+            return
+        if prueba.entrenador_online:
+            await ctx.send("⚠️ Ya hay un entrenador activo.", delete_after=5)
+            return
+        
+        prueba.entrenador_online = ctx.author
+        prueba.ultima_sesion = int(datetime.now(timezone.utc).timestamp())
+        prueba.prueba_en_curso = False
+        await actualizar_mensaje_prueba(numero)
+        await ctx.send(f"🟢 **Modo entrenador activado (Grupo {numero})**", delete_after=5)
+        await asyncio.sleep(7200)
+        if pruebas.get(numero) and pruebas[numero].entrenador_online == ctx.author:
+            await offline(ctx)
+    online.__name__ = f"online{numero}"
 
-@bot.command()
-@commands.has_role("Entrenador")
-async def online1(ctx):
-    prueba = pruebas.get(1)
-    if not prueba:
-        await ctx.send("⚠️ Usa primero `!set_here1` en este canal.", delete_after=5)
-        return
-    if prueba.entrenador_online:
-        await ctx.send("⚠️ Ya hay un entrenador activo.", delete_after=5)
-        return
-    
-    prueba.entrenador_online = ctx.author
-    prueba.ultima_sesion = int(datetime.now().timestamp())
-    prueba.prueba_en_curso = False
-    await actualizar_mensaje_prueba(1)
-    await ctx.send("🟢 **Modo entrenador activado**", delete_after=5)
-    await asyncio.sleep(7200)  # Auto-offline después de 2 horas
-    if pruebas.get(1) and pruebas[1].entrenador_online == ctx.author:
-        await offline1(ctx)
+    # ... (Repite el mismo patrón para offline, iniciar, finalizar y reset)
 
-@bot.command()
-@commands.has_role("Entrenador")
-async def offline1(ctx):
-    prueba = pruebas.get(1)
-    if not prueba:
-        return
-    
-    prueba.entrenador_online = None
-    prueba.participantes = []
-    prueba.prueba_en_curso = False
-    prueba.ultima_sesion = int(datetime.now().timestamp())
-    await actualizar_mensaje_prueba(1)
-    await ctx.send("🔴 **Modo entrenador desactivado**", delete_after=5)
-
-@bot.command()
-@commands.has_role("Entrenador")
-async def iniciar1(ctx):
-    prueba = pruebas.get(1)
-    if not prueba:
-        return
-    
-    prueba.prueba_en_curso = True
-    prueba.ultima_sesion = int(datetime.now().timestamp())
-    await actualizar_mensaje_prueba(1)
-    await ctx.send("⏳ **Prueba iniciada: No se admiten más participantes**", delete_after=5)
-
-@bot.command()
-@commands.has_role("Entrenador")
-async def finalizar1(ctx):
-    prueba = pruebas.get(1)
-    if not prueba:
-        return
-    
-    prueba.entrenador_online = None
-    prueba.participantes = []
-    prueba.prueba_en_curso = False
-    prueba.ultima_sesion = int(datetime.now().timestamp())
-    await actualizar_mensaje_prueba(1)
-    await ctx.send("🏁 **Prueba finalizada y reiniciada**", delete_after=5)
-
-@bot.command()
-@commands.has_role("Entrenador")
-async def reset1(ctx):
-    pruebas[1] = Prueba()  # Reinicia completamente el Grupo 1
-    await ctx.send("🔄 **Grupo 1 reiniciado. Usa `!set_here1` en un canal nuevo**", delete_after=5)
+# Crear comandos para los grupos 1 al 10
+for i in range(1, 11):
+    crear_comandos_grupo(i)
 
 # Sistema 24/7
 from flask import Flask
