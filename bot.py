@@ -6,10 +6,7 @@ from discord.ui import Button, View
 from datetime import datetime
 from discord.errors import NotFound
 
-intents = discord.Intents.default()
-intents.messages = True
-intents.message_content = True
-
+intents = discord.Intents.all()
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 # Diccionario para almacenar múltiples pruebas
@@ -29,8 +26,8 @@ class PruebaView(View):
         self.prueba_id = prueba_id
 
     @discord.ui.button(label="Unirse a la cola",
-                       style=discord.ButtonStyle.green,
-                       custom_id="unirse_cola")
+                     style=discord.ButtonStyle.green,
+                     custom_id="unirse_cola")
     async def unirse_cola(self, interaction: discord.Interaction, button: Button):
         prueba = pruebas.get(self.prueba_id)
         if not prueba:
@@ -52,9 +49,7 @@ async def actualizar_mensaje_prueba(prueba_id):
     if not canal:
         return
 
-    # Timestamp dinámico para Discord
     timestamp = int(datetime.now().timestamp())
-
     embed = discord.Embed(title=f"Sistema de Pruebas de Ascenso (Grupo {prueba_id})")
     view = PruebaView(prueba_id) if (prueba.entrenador_online and not prueba.prueba_en_curso) else None
 
@@ -68,7 +63,7 @@ async def actualizar_mensaje_prueba(prueba_id):
     else:
         embed.color = discord.Color.red()
         embed.description = "Prueba cerrada 🔴\nNo hay entrenadores online"
-        embed.set_footer(text=f"Última sesión: <t:{timestamp}:f>")  # Formato dinámico
+        embed.set_footer(text=f"Última sesión: <t:{timestamp}:f>")
 
     try:
         if prueba.mensaje_prueba:
@@ -78,79 +73,78 @@ async def actualizar_mensaje_prueba(prueba_id):
     except (NotFound, AttributeError):
         prueba.mensaje_prueba = await canal.send(embed=embed, view=view)
 
-@bot.command(name="set_here")
+@bot.command()
 @commands.has_role("Entrenador")
-async def set_here(ctx, prueba_id: int = 1):
-    if prueba_id not in pruebas:
-        pruebas[prueba_id] = Prueba()
-    pruebas[prueba_id].canal_prueba_id = ctx.channel.id
-    await actualizar_mensaje_prueba(prueba_id)
-    await ctx.send(f"✅ Canal de pruebas {prueba_id} configurado aquí.", delete_after=5)
+async def set_here1(ctx):
+    if 1 not in pruebas:
+        pruebas[1] = Prueba()
+    pruebas[1].canal_prueba_id = ctx.channel.id
+    await actualizar_mensaje_prueba(1)
+    await ctx.send("✅ Canal de pruebas 1 configurado aquí.", delete_after=5)
 
-@bot.command(name="online")
+@bot.command()
 @commands.has_role("Entrenador")
-async def online(ctx, prueba_id: int = 1):
-    prueba = pruebas.get(prueba_id)
+async def online1(ctx):
+    prueba = pruebas.get(1)
     if not prueba:
-        await ctx.send(f"❌ El grupo {prueba_id} no existe. Usa `!set_here{prueba_id}` primero.", delete_after=5)
+        await ctx.send("❌ Usa primero !set_here1 en este canal.", delete_after=5)
         return
     if prueba.entrenador_online:
         await ctx.send("⚠️ Ya hay un entrenador online.", delete_after=5)
         return
+    
     prueba.entrenador_online = ctx.author
     prueba.prueba_en_curso = False
-    await actualizar_mensaje_prueba(prueba_id)
+    await actualizar_mensaje_prueba(1)
     await ctx.send("🟢 Modo entrenador activado.", delete_after=5)
     await asyncio.sleep(7200)  # 2 horas de timeout
-    if pruebas.get(prueba_id) and pruebas[prueba_id].entrenador_online == ctx.author:
-        await offline(ctx, prueba_id)
+    if pruebas.get(1) and pruebas[1].entrenador_online == ctx.author:
+        await offline1(ctx)
 
-@bot.command(name="offline")
+@bot.command()
 @commands.has_role("Entrenador")
-async def offline(ctx, prueba_id: int = 1):
-    prueba = pruebas.get(prueba_id)
+async def offline1(ctx):
+    prueba = pruebas.get(1)
     if not prueba:
         return
     prueba.entrenador_online = None
     prueba.participantes = []
     prueba.prueba_en_curso = False
-    await actualizar_mensaje_prueba(prueba_id)
+    await actualizar_mensaje_prueba(1)
     await ctx.send("🔴 Modo entrenador desactivado.", delete_after=5)
 
-@bot.command(name="iniciar")
+@bot.command()
 @commands.has_role("Entrenador")
-async def iniciar(ctx, prueba_id: int = 1):
-    prueba = pruebas.get(prueba_id)
+async def iniciar1(ctx):
+    prueba = pruebas.get(1)
     if not prueba:
         return
     prueba.prueba_en_curso = True
-    await actualizar_mensaje_prueba(prueba_id)
+    await actualizar_mensaje_prueba(1)
     await ctx.send("🟢 Prueba iniciada. Los participantes no pueden unirse ahora.", delete_after=5)
 
-@bot.command(name="finalizar")
+@bot.command()
 @commands.has_role("Entrenador")
-async def finalizar(ctx, prueba_id: int = 1):
-    prueba = pruebas.get(prueba_id)
+async def finalizar1(ctx):
+    prueba = pruebas.get(1)
     if not prueba:
-        await ctx.send(f"❌ El grupo {prueba_id} no existe.", delete_after=5)
+        await ctx.send("❌ No hay prueba activa en este grupo.", delete_after=5)
         return
     
-    # Reinicia todo el estado (como !offline)
     prueba.entrenador_online = None
     prueba.participantes = []
     prueba.prueba_en_curso = False
-    
-    await actualizar_mensaje_prueba(prueba_id)
-    await ctx.send(f"🔴 Prueba {prueba_id} finalizada. Estado reiniciado.", delete_after=5)
+    await actualizar_mensaje_prueba(1)
+    await ctx.send("🔴 Prueba finalizada. Estado reiniciado.", delete_after=5)
 
-@bot.command(name="fix_msg")
+@bot.command()
 @commands.has_role("Entrenador")
-async def fix_msg(ctx, prueba_id: int = 1):
-    prueba = pruebas.get(prueba_id)
+async def fix_msg1(ctx):
+    prueba = pruebas.get(1)
     if not prueba:
         return
     prueba.mensaje_prueba = None
-    await actualizar_mensaje_prueba(prueba_id)
+    await actualizar_mensaje_prueba(1)
     await ctx.send("✅ Mensaje recreado manualmente.", delete_after=5)
 
 # Sistema keep_alive para 24/7
