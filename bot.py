@@ -38,11 +38,11 @@ class PruebaView(View):
 
 
 async def actualizar_mensaje_prueba(numero):
-    canal = canales_prueba[numero]
-    if not canal:
+    # Si no hay canal configurado, no hacer nada
+    if not canales_prueba[numero]:
         return
 
-    channel = bot.get_channel(canal)
+    channel = bot.get_channel(canales_prueba[numero])
     if not channel:
         return
 
@@ -62,12 +62,18 @@ async def actualizar_mensaje_prueba(numero):
         embed.set_footer(text=f"Última sesión: {datetime.now().strftime('%d/%m/%Y %H:%M')}")
 
     try:
+        # Intentar editar el mensaje existente
         if mensajes_prueba[numero]:
             await mensajes_prueba[numero].edit(embed=embed, view=view)
-        else:
-            mensajes_prueba[numero] = await channel.send(embed=embed, view=view)
+            return
     except (NotFound, AttributeError):
+        pass  # Si falla, continuar para crear nuevo mensaje
+
+    # Crear nuevo mensaje si no existe o no se pudo editar
+    try:
         mensajes_prueba[numero] = await channel.send(embed=embed, view=view)
+    except Exception as e:
+        print(f"Error al enviar mensaje: {e}")
 
 
 @bot.command()
@@ -102,7 +108,9 @@ async def set_here9(ctx): await set_here(ctx, 9)
 async def set_here10(ctx): await set_here(ctx, 10)
 
 async def set_here(ctx, numero):
+    # Actualizar el canal y resetear el mensaje
     canales_prueba[numero] = ctx.channel.id
+    mensajes_prueba[numero] = None  # Forzar creación de nuevo mensaje
     await actualizar_mensaje_prueba(numero)
     await ctx.send(f"✅ Canal de pruebas #{numero} configurado aquí.", delete_after=5)
 
@@ -139,6 +147,9 @@ async def online9(ctx): await online(ctx, 9)
 async def online10(ctx): await online(ctx, 10)
 
 async def online(ctx, numero):
+    if not canales_prueba[numero]:
+        await ctx.send(f"⚠️ Primero configura el canal con !set_here{numero}", delete_after=5)
+        return
     if entrenadores_online[numero]:
         await ctx.send(f"⚠️ Ya hay un entrenador online en la prueba #{numero}.", delete_after=5)
         return
@@ -222,9 +233,12 @@ async def iniciar9(ctx): await iniciar(ctx, 9)
 async def iniciar10(ctx): await iniciar(ctx, 10)
 
 async def iniciar(ctx, numero):
+    if not participantes[numero]:
+        await ctx.send(f"⚠️ No hay participantes en la cola #{numero}.", delete_after=5)
+        return
     pruebas_en_curso[numero] = True
     await actualizar_mensaje_prueba(numero)
-    await ctx.send(f"🟢 Prueba #{numero} iniciada. Los participantes no pueden unirse ahora.", delete_after=5)
+    await ctx.send(f"🟢 Prueba #{numero} iniciada con {participantes[numero][0].mention}.", delete_after=10)
 
 
 @bot.command()
@@ -259,11 +273,11 @@ async def finalizar9(ctx): await finalizar(ctx, 9)
 async def finalizar10(ctx): await finalizar(ctx, 10)
 
 async def finalizar(ctx, numero):
-    entrenadores_online[numero] = None  # Cambio clave: establecer entrenador como offline
+    entrenadores_online[numero] = None
     participantes[numero] = []
     pruebas_en_curso[numero] = False
-    await actualizar_mensaje_prueba(numero)  # Esto hará que el embed vuelva al estado inicial
-    await ctx.send(f"🔴 Prueba #{numero} finalizada. Sistema reiniciado completamente.", delete_after=5)
+    await actualizar_mensaje_prueba(numero)
+    await ctx.send(f"🔴 Prueba #{numero} finalizada. Sistema reiniciado.", delete_after=5)
 
 
 @bot.command()
